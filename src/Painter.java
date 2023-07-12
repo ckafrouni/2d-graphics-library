@@ -1,7 +1,7 @@
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 
@@ -14,12 +14,14 @@ public class Painter extends JPanel {
 	private double angle;
 	private boolean isPenDown;
 	private boolean isFilling;
-	private Color color = Color.BLACK;
+	private Color strokeColor = Color.BLACK;
+	private Color fillColor = Color.BLACK;
 	private double strokeSize = 1.0;
-	private int delay = 20;  // delay in milliseconds
+	private int delay = 5;  // delay in milliseconds
+	int batchSize = 1;
 	private int arrowSize = 20;
 	
-	private final Queue<Runnable> actions = new LinkedList<>();
+	private final Queue<Runnable> actions = new ArrayDeque<>();
 	private final List<Point> fillPoints = new ArrayList<>();
 	
 	/**
@@ -100,7 +102,7 @@ public class Painter extends JPanel {
 	private void drawAndMove(double newX, double newY) {
 		if (isPenDown) {
 			Graphics2D g = (Graphics2D) this.getGraphics();
-			g.setColor(this.color);
+			g.setColor(this.strokeColor);
 			g.setStroke(new BasicStroke((float) this.strokeSize));
 			g.drawLine((int) Math.round(x), (int) Math.round(y), (int) Math.round(newX), (int) Math.round(newY));
 			g.dispose();
@@ -186,12 +188,33 @@ public class Painter extends JPanel {
 	}
 	
 	/**
-	 * Set the pen's color
+	 * Set the pen's stroke color
+	 *
+	 * @param strokeColor New color for the pen
+	 */
+	public void setStrokeColor(Color strokeColor) {
+		actions.add(() -> this.strokeColor = strokeColor);
+	}
+	
+	/**
+	 * Set the pen's fill color
+	 *
+	 * @param fillColor New fill color for the pen
+	 */
+	public void setFillColor(Color fillColor) {
+		actions.add(() -> this.fillColor = fillColor);
+	}
+	
+	/**
+	 * Set the pen's stroke and fill color
 	 *
 	 * @param color New color for the pen
 	 */
 	public void setColor(Color color) {
-		actions.add(() -> this.color = color);
+		actions.add(() -> {
+			this.strokeColor = color;
+			this.fillColor = color;
+		});
 	}
 	
 	/**
@@ -199,7 +222,10 @@ public class Painter extends JPanel {
 	 * (same as setColor(Color.BLACK))
 	 */
 	public void resetColor() {
-		actions.add(() -> this.color = Color.BLACK);
+		actions.add(() -> {
+			this.strokeColor = Color.BLACK;
+			this.fillColor = Color.BLACK;
+		});
 	}
 	
 	/**
@@ -229,7 +255,7 @@ public class Painter extends JPanel {
 		actions.add(() -> {
 			this.isFilling = false;
 			Graphics g = this.getGraphics();
-			g.setColor(this.color);
+			g.setColor(this.fillColor);
 			if (!fillPoints.isEmpty()) {
 				int[] xPoints = new int[fillPoints.size()];
 				int[] yPoints = new int[fillPoints.size()];
@@ -247,26 +273,32 @@ public class Painter extends JPanel {
 	 * Execute all the painter's pending actions
 	 */
 	public void execute() {
-		SwingUtilities.invokeLater(() -> {
-			Timer timer = new Timer(delay, e -> {
-				if (!actions.isEmpty()) {
-					actions.poll().run();
+		SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
+			@Override
+			protected Void doInBackground() {
+				// Process all actions
+				while (!actions.isEmpty()) {
+					// Execute the actions batch by batch
+					for (int i = 0; i < batchSize && !actions.isEmpty(); i++) {
+						actions.poll().run();
+					}
+					
+					try {
+						Thread.sleep(delay);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					}
 				}
-			});
-			timer.start();
-		});
-	}
-	
-	/**
-	 * Clear all the painter's graphics
-	 */
-	public void clear() {
-		actions.add(() -> {
-			Graphics g = this.getGraphics();
-			g.setColor(Color.WHITE);
-			g.fillRect(0, 0, this.getWidth(), this.getHeight());
-			g.dispose();
-		});
+				return null;
+			}
+			
+			@Override
+			protected void done() {
+				// Optional: actions to do after all actions are processed
+			}
+		};
+		
+		worker.execute();
 	}
 	
 	/**
@@ -288,7 +320,7 @@ public class Painter extends JPanel {
 		Painter pt = new Painter(800, 600, "painter Graphics");
 		
 		// Example usage
-		pt.setColor(Color.RED);
+		pt.setStrokeColor(Color.RED);
 		pt.startFill();
 		pt.move(100);
 		pt.turn(90);
@@ -300,7 +332,7 @@ public class Painter extends JPanel {
 		pt.endFill();
 		
 		pt.move(100);
-		pt.setColor(Color.BLACK);
+		pt.setStrokeColor(Color.BLACK);
 		pt.penDown();
 		pt.move(100);
 		pt.turn(120);
@@ -309,7 +341,7 @@ public class Painter extends JPanel {
 		pt.move(100);
 		
 		pt.setStrokeSize(6);
-		pt.setColor(Color.BLUE);
+		pt.setStrokeColor(Color.BLUE);
 		pt.turn(60);
 		pt.move(100);
 		pt.turn(120);
@@ -317,11 +349,11 @@ public class Painter extends JPanel {
 		pt.turn(120);
 		pt.move(100);
 		
-		pt.setColor(Color.GREEN);
+		pt.setStrokeColor(Color.GREEN);
 		pt.goTo(20, 20);
-		pt.setColor(Color.YELLOW);
+		pt.setStrokeColor(Color.YELLOW);
 		pt.setY(200);
-		pt.setColor(Color.ORANGE);
+		pt.setStrokeColor(Color.ORANGE);
 		pt.move(100);
 		
 		pt.execute();
